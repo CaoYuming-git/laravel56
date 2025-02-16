@@ -44,7 +44,7 @@ class ProviderRepository
         $this->manifestPath = $manifestPath;
     }
 
-    /**
+    /**注册配置的服务提供者
      * Register the application service providers.
      *
      * @param  array  $providers

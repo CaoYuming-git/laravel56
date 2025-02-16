@@ -130,6 +130,12 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     protected $namespace;
 
     /**
+     * 构造函数，包含：
+     *  1、设置多个路径
+     *  2、注册基础的单例绑定，包含application单例、app单例、container单例、PackageManifest单例
+     *  3、注册基础服务提供者：事件服务提供者、日志服务提供者、路由服务提供者。注册服务提供者时会调用服务提供者的register方法，一般就是注册绑定服务到容器内
+     *  4、注册核心类的别名到容器中去
+     *
      * Create a new Illuminate application instance.
      *
      * @param  string|null  $basePath
@@ -137,14 +143,15 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
      */
     public function __construct($basePath = null)
     {
+        //设置多个路径
         if ($basePath) {
             $this->setBasePath($basePath);
         }
-
+        //注册基础的单例绑定，包含application单例、app单例、container单例、PackageManifest单例
         $this->registerBaseBindings();
-
+        //注册基础服务提供者：事件服务提供者、日志服务提供者、路由服务提供者。注册服务提供者时会调用服务提供者的register方法，一般就是注册绑定服务到容器内
         $this->registerBaseServiceProviders();
-
+        //注册核心类的别名到容器中去
         $this->registerCoreContainerAliases();
     }
 
@@ -159,38 +166,48 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     }
 
     /**
+     * 注册基础的单例绑定，包含application单例、app单例、container单例、PackageManifest单例
+     *
      * Register the basic bindings into the container.
      *
      * @return void
      */
     protected function registerBaseBindings()
     {
+        //设置application单例
         static::setInstance($this);
-
+        //绑定app单例
         $this->instance('app', $this);
-
+        //绑定container单例
         $this->instance(Container::class, $this);
-
+        //设置package manifest单例
         $this->instance(PackageManifest::class, new PackageManifest(
             new Filesystem, $this->basePath(), $this->getCachedPackagesPath()
         ));
     }
 
     /**
+     * 注册基础服务提供者：
+     * 事件服务提供者：EventServiceProvider
+     * 日志服务提供者：LogServiceProvider
+     * 路由服务提供者：RoutingServiceProvider
      * Register all of the base service providers.
      *
      * @return void
      */
     protected function registerBaseServiceProviders()
     {
+        //注册事件服务提供者
         $this->register(new EventServiceProvider($this));
-
+        //注册日志服务提供者
         $this->register(new LogServiceProvider($this));
-
+        //注册路由服务提供者
         $this->register(new RoutingServiceProvider($this));
     }
 
     /**
+     * 执行引导类，完成应用程序的引导操作，
+     * 会依次调用引导类的bootstrap方法，完成应用程序的引导操作
      * Run the given array of bootstrap classes.
      *
      * @param  array  $bootstrappers
@@ -198,13 +215,15 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
      */
     public function bootstrapWith(array $bootstrappers)
     {
+        //标记应用程序为已引导
         $this->hasBeenBootstrapped = true;
 
         foreach ($bootstrappers as $bootstrapper) {
+            //todo 事件服务相关，触发bootstrapping:$bootstrapper 事件
             $this['events']->fire('bootstrapping: '.$bootstrapper, [$this]);
-
+            //实例化引导类，并调用引导类的bootstrap函数
             $this->make($bootstrapper)->bootstrap($this);
-
+            //todo 事件服务相关，触发bootstrapped:$bootstrapper 事件
             $this['events']->fire('bootstrapped: '.$bootstrapper, [$this]);
         }
     }
@@ -531,6 +550,8 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     }
 
     /**
+     * 注册app.providers中配置的所有服务提供者，此函数会在boot函数之前执行
+     * 此函数也是通过引导类Illuminate\Foundation\Bootstrap\RegisterProviders::bootstrap来调用的
      * Register all of the configured providers.
      *
      * @return void
@@ -543,12 +564,14 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
                         });
 
         $providers->splice(1, 0, [$this->make(PackageManifest::class)->providers()]);
-
+        //注册所有配置的服务提供者
         (new ProviderRepository($this, new Filesystem, $this->getCachedServicesPath()))
                     ->load($providers->collapse()->toArray());
     }
 
     /**
+     * 注册一个服务提供者到应用内
+     * $provider：可以是一个服务提供者对象 || 一个服务提供者类名
      * Register a service provider with the application.
      *
      * @param  \Illuminate\Support\ServiceProvider|string  $provider
@@ -558,6 +581,7 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
      */
     public function register($provider, $options = [], $force = false)
     {
+        //如果服务提供者实例已经存在 && forece == false，则直接返回旧实例
         if (($registered = $this->getProvider($provider)) && ! $force) {
             return $registered;
         }
@@ -565,10 +589,12 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
         // If the given "provider" is a string, we will resolve it, passing in the
         // application instance automatically for the developer. This is simply
         // a more convenient way of specifying your service provider classes.
+        //如果传入的服务提供者是一个类名，则根据字符串去解析生成一个服务提供者实例(直接new出来的)
         if (is_string($provider)) {
             $provider = $this->resolveProvider($provider);
         }
 
+        //如果服务提供者有register方法，则调用服务提供者对象的register方法
         if (method_exists($provider, 'register')) {
             $provider->register();
         }
@@ -576,23 +602,28 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
         // If there are bindings / singletons set as properties on the provider we
         // will spin through them and register them with the application, which
         // serves as a convenience layer while registering a lot of bindings.
+
+        //如果服务提供者有bindings属性，则遍历bindings属性，调用bind方法注册绑定
         if (property_exists($provider, 'bindings')) {
             foreach ($provider->bindings as $key => $value) {
                 $this->bind($key, $value);
             }
         }
 
+        //如果服务提供者有singletons属性，则遍历singletons属性，调用singleton方法注册单例
         if (property_exists($provider, 'singletons')) {
             foreach ($provider->singletons as $key => $value) {
                 $this->singleton($key, $value);
             }
         }
 
+        //标记此服务提供者已注册
         $this->markAsRegistered($provider);
 
         // If the application has already booted, we will call this boot method on
         // the provider class so it has an opportunity to do its boot logic and
         // will be ready for any usage by this developer's application logic.
+        //如果应用已经启动(由应用程序中的boot()进行启动，实际由Illuminate\Foundation\Bootstrap\BootProviders::bootstrap()调用)，则调用服务提供者的boot方法
         if ($this->booted) {
             $this->bootProvider($provider);
         }
@@ -601,6 +632,7 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     }
 
     /**
+     * 如果服务提供者实例存在，则返回一个实例
      * Get the registered service provider instance if it exists.
      *
      * @param  \Illuminate\Support\ServiceProvider|string  $provider
@@ -612,6 +644,7 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     }
 
     /**
+     * 根据服务提供者类型，返回一个服务提供者的所有实例
      * Get the registered service provider instances if any exist.
      *
      * @param  \Illuminate\Support\ServiceProvider|string  $provider
@@ -627,6 +660,7 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     }
 
     /**
+     * 根据服务提供者类型，实例化一个服务提供者对象
      * Resolve a service provider instance from the class name.
      *
      * @param  string  $provider
@@ -659,7 +693,8 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     {
         // We will simply spin through each of the deferred providers and register each
         // one and boot them if the application has booted. This should make each of
-        // the remaining services available to this application for immediate use.
+        // the remaining ser
+        //vices available to this application for immediate use.
         foreach ($this->deferredServices as $service => $provider) {
             $this->loadDeferredProvider($service);
         }
@@ -758,12 +793,20 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     }
 
     /**
+     * 启动应用程序中的服务提供者，即执行注册到应用程序中的所有服务提供者的boot()函数
+     * 此函数是在引导类的Bootstrap\BootProviders::bootstrap()中执行，调用时机是
+     *  1、会在处理http请求时，由Illuminate\Foundation\Http\Kernel中的handle->sendRequestThroughRouter->bootstrap()，将引导类BootProviders传给Application中的bootstrapWith()函数
+     *  2、然后bootstrapWith函数会执行Bootstrap\BootProviders中的bootstrap函数
+     *  3、BootProviders中的bootstrap()会调用此boot()函数
+     * 注意boot函数会在registerConfiguredProviders之后调用，因为Illuminate\Foundation\Http\Kernel中bootstrap函数传入的引导类中，Bootstrap\BootProviders在Bootstrap\RegisterProviders之后
+     * 即自定义的服务提供者中的boot函数在自定义的其他所有服务提供商都已注册后，才会被调用，所以服务提供者中的boot()中可以访问到所有注册的其他服务
      * Boot the application's service providers.
      *
      * @return void
      */
     public function boot()
     {
+        //如果已经启动，则直接返回
         if ($this->booted) {
             return;
         }
@@ -771,14 +814,15 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
         // Once the application has booted we will also fire some "booted" callbacks
         // for any listeners that need to do work after this initial booting gets
         // finished. This is useful when ordering the boot-up processes we run.
+        //执行booting()绑定的启动时回调函数
         $this->fireAppCallbacks($this->bootingCallbacks);
-
+        //调用注册的所有服务提供者的boot()函数
         array_walk($this->serviceProviders, function ($p) {
             $this->bootProvider($p);
         });
-
+        //标记为已启动
         $this->booted = true;
-
+        //执行booted()绑定的启动后回调函数
         $this->fireAppCallbacks($this->bootedCallbacks);
     }
 
@@ -1068,6 +1112,7 @@ class Application extends Container implements ApplicationContract, HttpKernelIn
     }
 
     /**
+     * 注册核心类的别名到容器中去，比如app、cache等等
      * Register the core class aliases in the container.
      *
      * @return void

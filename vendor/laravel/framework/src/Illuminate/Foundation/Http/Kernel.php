@@ -29,16 +29,23 @@ class Kernel implements KernelContract
     protected $router;
 
     /**
+     * 引导类(用于引导应用程序)
      * The bootstrap classes for the application.
      *
      * @var array
      */
     protected $bootstrappers = [
+        //读取环境变量引导类
         \Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables::class,
+        //读取配置引导类
         \Illuminate\Foundation\Bootstrap\LoadConfiguration::class,
+        //异常处理引导类
         \Illuminate\Foundation\Bootstrap\HandleExceptions::class,
+        //注册门面引导类
         \Illuminate\Foundation\Bootstrap\RegisterFacades::class,
+        //注册自定义配置的服务提供者，调用所有服务提供者的注册register方法？
         \Illuminate\Foundation\Bootstrap\RegisterProviders::class,
+        //启动自定义配置的服务提供者，调用所有服务提供者的启动boot方法
         \Illuminate\Foundation\Bootstrap\BootProviders::class,
     ];
 
@@ -103,6 +110,7 @@ class Kernel implements KernelContract
     }
 
     /**
+     * 处理一个传入的 HTTP 请求
      * Handle an incoming HTTP request.
      *
      * @param  \Illuminate\Http\Request  $request
@@ -132,6 +140,8 @@ class Kernel implements KernelContract
     }
 
     /**
+     * 把给定的 HTTP 请求通过中间件和路由器进行处理
+     * 这一步先注册所有的自定义服务提供者，并启动应用程序(调用application的boot函数)，即调用自定义服务提供者中的boot函数
      * Send the given request through the middleware / router.
      *
      * @param  \Illuminate\Http\Request  $request
@@ -139,10 +149,11 @@ class Kernel implements KernelContract
      */
     protected function sendRequestThroughRouter($request)
     {
+        //注册request为单例对象，所以后续获取到的request对象都是同一个
         $this->app->instance('request', $request);
-
+        //清除门面模式下的request实例缓存
         Facade::clearResolvedInstance('request');
-
+        //执行引导类，对应用程序进行引导，完成各种初始化操作
         $this->bootstrap();
 
         return (new Pipeline($this->app))
@@ -152,12 +163,17 @@ class Kernel implements KernelContract
     }
 
     /**
+     * 引导应用程序，完成各种初始化操作。
+     * 调用application中的bootstrapWith()函数，传入$bootstrappers引导类，会依次调用引导类中的bootstrap()函数来对应用程序进行引导。引导类中包含了注册和启动配置的服务提供者
      * Bootstrap the application for HTTP requests.
      *
      * @return void
      */
     public function bootstrap()
     {
+        /**
+         * 将引导类传给application，application会调用引导类中的bootstrap()函数来对应用程序进行引导
+         */
         if (! $this->app->hasBeenBootstrapped()) {
             $this->app->bootstrapWith($this->bootstrappers());
         }
@@ -294,6 +310,7 @@ class Kernel implements KernelContract
     }
 
     /**
+     * 获取在http kernel中定义的引导类(用于引导application)
      * Get the bootstrap classes for the application.
      *
      * @return array
